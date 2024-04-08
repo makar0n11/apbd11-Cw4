@@ -2,31 +2,78 @@
 
 namespace LegacyApp
 {
+    public interface IClientRepository
+    {
+         Client GetById(int IdClient);
+    }
+    public interface ICreditLimitService
+    {
+         int GetCreditLimit(string lastName, DateTime birthDate);
+    }
+    
+    public interface IUserDataAdapter
+    {
+        void AddUser(User user);
+    }
+    
+    public class UserDataAccessAdapter : IUserDataAdapter
+    {
+        public void AddUser(User user)
+        {
+            UserDataAccess.AddUser(user);
+        }
+    }
     public class UserService
     {
-        public bool AddUser(string firstName, string lastName, string email, DateTime dateOfBirth, int clientId)
+        private IClientRepository _clientRepository;
+        private ICreditLimitService _creditLimitService;
+        private IUserDataAdapter _userDataAdapter;
+
+        
+        public UserService(IClientRepository clientRepository,ICreditLimitService creditLimitService , IUserDataAdapter userDataAdapter)
         {
-            if (string.IsNullOrEmpty(firstName) || string.IsNullOrEmpty(lastName))
-            {
-                return false;
-            }
+            _clientRepository = clientRepository;
+            _creditLimitService = creditLimitService;
+            _userDataAdapter = userDataAdapter;
+        }
+        
+        [Obsolete]
+        public UserService()
+        {
+            _clientRepository = new ClientRepository();
+            _creditLimitService = new UserCreditService();
+            _userDataAdapter = new UserDataAccessAdapter();
+        }
 
-            if (!email.Contains("@") && !email.Contains("."))
-            {
-                return false;
-            }
+        public bool CheckName(string first, string last)
+        {
+            return string.IsNullOrEmpty(first) || string.IsNullOrEmpty(last);
+        }
 
+        public bool CheckEmail(string email)
+        {
+            return !email.Contains("@") && !email.Contains(".");
+        }
+
+        public bool CheckAge(DateTime dateOfBirth)
+        {
             var now = DateTime.Now;
             int age = now.Year - dateOfBirth.Year;
-            if (now.Month < dateOfBirth.Month || (now.Month == dateOfBirth.Month && now.Day < dateOfBirth.Day)) age--;
+            if (now.Month < dateOfBirth.Month || (now.Month == dateOfBirth.Month && now.Day < dateOfBirth.Day))
+                age--;
 
-            if (age < 21)
+            return age < 21;
+        }
+
+        public bool AddUser(string firstName, string lastName, string email, DateTime dateOfBirth, int clientId)
+        {
+            
+            if (CheckName(firstName, lastName) || CheckEmail(email) || CheckAge(dateOfBirth))
             {
                 return false;
             }
-
-            var clientRepository = new ClientRepository();
-            var client = clientRepository.GetById(clientId);
+            
+            var client = _clientRepository.GetById(clientId);
 
             var user = new User
             {
@@ -43,19 +90,16 @@ namespace LegacyApp
             }
             else if (client.Type == "ImportantClient")
             {
-                using (var userCreditService = new UserCreditService())
-                {
-                    int creditLimit = userCreditService.GetCreditLimit(user.LastName, user.DateOfBirth);
-                    creditLimit = creditLimit * 2;
+
+                int creditLimit = _creditLimitService.GetCreditLimit(user.LastName, user.DateOfBirth) * 2;
                     user.CreditLimit = creditLimit;
-                }
+                
             }
             else
             {
                 user.HasCreditLimit = true;
-                using (var userCreditService = new UserCreditService())
                 {
-                    int creditLimit = userCreditService.GetCreditLimit(user.LastName, user.DateOfBirth);
+                    int creditLimit = _creditLimitService.GetCreditLimit(user.LastName, user.DateOfBirth);
                     user.CreditLimit = creditLimit;
                 }
             }
@@ -65,7 +109,7 @@ namespace LegacyApp
                 return false;
             }
 
-            UserDataAccess.AddUser(user);
+            _userDataAdapter.AddUser(user);
             return true;
         }
     }
